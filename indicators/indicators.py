@@ -174,6 +174,20 @@ def add_bollinger(
     df[f"BB_lower_{window}"] = middle - num_std * std
     return df
 
+def add_all_indicators(df: pd.DataFrame, params: dict) -> pd.DataFrame:
+    """
+    Convenience wrapper that applies every indicator using a params dict,
+    e.g. as produced by the Streamlit sidebar. Keeps app.py from having to
+    know the individual function signatures.
+    """
+    df = add_sma(df, params["sma_short"])
+    df = add_sma(df, params["sma_long"])
+    df = add_ema(df, params["ema_short"])
+    df = add_ema(df, params["ema_long"])
+    df = add_rsi(df, params["rsi_period"])
+    df = add_macd(df, params["ema_short"], params["ema_long"], params["macd_signal"])
+    df = add_bollinger(df, params["bb_window"], params["bb_std"])
+    return df
 
 # ---------------------------------------------------------------------------
 # Quick manual sanity-check script (chạy trực tiếp file này để test nhanh)

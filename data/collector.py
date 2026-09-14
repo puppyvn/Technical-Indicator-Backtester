@@ -6,7 +6,7 @@ fetches across multiple tickers while isolating per-ticker failures.
 """
 
 import time
-
+import logging
 import pandas as pd
 import yfinance as yf
 
@@ -17,7 +17,7 @@ class DataCollectionError(Exception):
 
 
 def fetch_price_history(
-    ticker: str, period: str, interval: str, max_retries: int = 3
+    ticker: str, period: str, interval: str, max_retries: int = 3, retry_delay: float = 1.5,
 ) -> pd.DataFrame:
     """
     Fetch OHLCV price history for a single ticker, retrying on failure.
@@ -76,3 +76,18 @@ def fetch_multiple(
             print(f"Skipping '{ticker}': {exc}")
 
     return results
+
+def fetch_company_info(ticker: str) -> dict:
+    """Lightweight metadata fetch (name, sector, market cap) for display purposes."""
+    try:
+        info = yf.Ticker(ticker).get_info()
+        return {
+            "name": info.get("shortName", ticker),
+            "sector": info.get("sector", "N/A"),
+            "industry": info.get("industry", "N/A"),
+            "market_cap": info.get("marketCap"),
+            "currency": info.get("currency", "USD"),
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not fetch info for %s: %s", ticker, e)
+        return {"name": ticker, "sector": "N/A", "industry": "N/A", "market_cap": None, "currency": "USD"}

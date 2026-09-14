@@ -24,12 +24,33 @@ def candlestick_with_overlays(
     for col in sma_cols or []:
         if col in df.columns:
             fig.add_trace(go.Scatter(x=df["Date"], y=df[col], mode="lines", line=dict(width=1.5)))
-    if show_bollinger and {"BB_Upper", "BB_Lower"}.issubset(df.columns):
-        fig.add_trace(go.Scatter(x=df["Date"], y=df["BB_Upper"], mode="lines", name="BB Upper",
-                                 line=dict(width=1, dash="dot"), showlegend=True))
-        fig.add_trace(go.Scatter(x=df["Date"], y=df["BB_Lower"], mode="lines", name="BB Lower",
-                                 line=dict(width=1, dash="dot"), fill="tonexty",
-                                 fillcolor="rgba(100,100,255,0.08)", showlegend=True))
+
+    if show_bollinger:
+        bb_upper = next((c for c in df.columns if c.startswith("BB_upper_")), None)
+        bb_lower = next((c for c in df.columns if c.startswith("BB_lower_")), None)
+        if bb_upper and bb_lower:
+            fig.add_trace(
+                go.Scatter(
+                    x=df["Date"],
+                    y=df[bb_upper],
+                    mode="lines",
+                    name="BB Upper",
+                    line=dict(width=1, dash="dot"),
+                    showlegend=True,
+                )
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=df["Date"],
+                    y=df[bb_lower],
+                    mode="lines",
+                    name="BB Lower",
+                    line=dict(width=1, dash="dot"),
+                    fill="tonexty",
+                    fillcolor="rgba(100,100,255,0.08)",
+                    showlegend=True,
+                )
+            )
     fig.update_layout(
         title=title,
         xaxis_rangeslider_visible=False,
@@ -49,11 +70,14 @@ def rsi_chart(df: pd.DataFrame, rsi_col: str, overbought: int= 70, oversold: int
 
 def macd_chart(df: pd.DataFrame) -> go.Figure:
     fig = make_subplots(specs=[[{"secondary_y": False}]])
-    fig.add_trace(go.Bar(x=df["Date"], y=df["MACD"], name="histogram", marker_color="lightgray"))
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD"], mode="lines", name="MACD"))
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD_Signal"], mode="lines", name="Signal"))
-    fig.update_layout(height=220, margin=dict(l=10, r=10, t=20, b=10),
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02))
+    fig.add_trace(go.Bar(x=df["Date"], y=df["MACD_hist"], name="Histogram", marker_color="lightgray"))
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD_line"], mode="lines", name="MACD"))
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD_signal"], mode="lines", name="Signal"))
+    fig.update_layout(
+        height=220,
+        margin=dict(l=10, r=10, t=20, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
     return fig
 
 def signal_markers_overlay(fig: go.Figure, df: pd.DataFrame, price_col: str = "Close") -> go.Figure:

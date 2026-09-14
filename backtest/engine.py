@@ -1,6 +1,5 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import numpy as np 
 from data.collector import fetch_price_history
 from indicators.indicators import add_sma, add_rsi, add_macd
 from backtest.signals import sma_crossover_signal, rsi_mean_reversion_signal, macd_crossover_signal
