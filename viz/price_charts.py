@@ -7,7 +7,7 @@ def candlestick_with_overlays(
     sma_cols: list[str] | None = None,
     show_bollinger: bool = False,
     title: str = "Price",
-) -> go.Figure():
+) -> go.Figure:
     fig = go.Figure()
 
     fig.add_trace(
