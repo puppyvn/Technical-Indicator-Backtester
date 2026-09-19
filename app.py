@@ -1,6 +1,13 @@
+"""
+Streamlit UI. Deliberately thin: sidebar collects inputs, then calls out
+to data/, indicators/, backtest/, and viz/ modules. No business logic here.
+
+Run with: streamlit run app.py
+"""
+
 import streamlit as st
 
-import config 
+import config
 from data.collector import fetch_price_history, fetch_company_info, DataCollectionError
 from data.validator import validate_ohlcv, clean_ohlcv
 from indicators.indicators import add_all_indicators
@@ -11,11 +18,13 @@ from viz.performance_charts import equity_curve_chart, drawdown_chart, stats_to_
 
 st.set_page_config(page_title="Technical Indicator Backtester", layout="wide")
 
+
 @st.cache_data(ttl=config.CACHE_TTL_SECONDS, show_spinner=False)
 def load_data(ticker: str, period: str, interval: str):
     df = fetch_price_history(ticker, period, interval)
     info = fetch_company_info(ticker)
-    return df, info    
+    return df, info
+
 
 def sidebar_inputs() -> dict:
     st.sidebar.header("Ticker & Range")
@@ -46,6 +55,7 @@ def sidebar_inputs() -> dict:
         "Signal to backtest",
         ["SMA Crossover", "RSI Mean Reversion", "MACD Crossover"],
     )
+
     st.sidebar.header("Backtest Settings")
     capital = st.sidebar.number_input("Initial capital ($)", value=config.INITIAL_CAPITAL, step=1000)
     fee_bps = st.sidebar.slider("Trading fee (bps per trade)", 0, 50, config.TRADING_FEE_BPS)
@@ -59,22 +69,20 @@ def sidebar_inputs() -> dict:
         strategy=strategy, capital=capital, fee_bps=fee_bps,
     )
 
+
 def apply_strategy(df, params):
     if params["strategy"] == "SMA Crossover":
         return sma_crossover_signal(df, f"SMA_{params['sma_short']}", f"SMA_{params['sma_long']}")
     elif params["strategy"] == "RSI Mean Reversion":
-        return rsi_mean_reversion_signal(
-            df,
-            f"RSI_{params['rsi_period']}",
-            config.RSI_OVERFSOLD,
-            config.RSI_OVERBOUGHT,
-        )
+        return rsi_mean_reversion_signal(df, f"RSI_{params['rsi_period']}",
+                                          config.RSI_OVERSOLD, config.RSI_OVERBOUGHT)
     else:
-        return macd_crossover_signal(df, "MACD_line", "MACD_signal")
+        return macd_crossover_signal(df)
+
 
 def main():
     st.title("Technical Indicator Backtester")
-    st.caption("Data via yfinance - Indicators computed with pandas - Charts with Plotly")
+    st.caption("Data via yfinance • Indicators computed with pandas • Charts with Plotly")
 
     params = sidebar_inputs()
 
@@ -82,7 +90,7 @@ def main():
         st.info("Enter a ticker in the sidebar to get started.")
         return
 
-    with st.spinner(f"Fetching {params["ticker"]}..."):
+    with st.spinner(f"Fetching {params['ticker']}..."):
         try:
             raw_df, info = load_data(params["ticker"], params["period"], params["interval"])
         except DataCollectionError as e:
@@ -98,36 +106,29 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Company", info["name"])
     col2.metric("Sector", info["sector"])
-    col3.metric("Last Close", f"${df["Close"].iloc[-1]:.2f}")
+    col3.metric("Last Close", f"${df['Close'].iloc[-1]:.2f}")
     col4.metric("Rows Loaded", len(df))
 
+    # --- Processing: indicators + signals + backtest ---
     df = add_all_indicators(df, params)
     df = apply_strategy(df, params)
-    df = run_backtest(df, "position", fee=params["fee_bps"] / 10_000)
-    df["strategy_equity"] = df["equity"]
-    df["buy_hold_equity"] = df["bh_equity"]
-    df["strategy_drawdown"] = (df["equity"] / df["equity"].cummax()) - 1
-    stats = compute_summary_stats(df["equity"])
+    df = run_backtest(df, initial_capital=params["capital"], fee_bps=params["fee_bps"])
+    stats = compute_summary_stats(df)
 
     tab_price, tab_backtest = st.tabs(["Price & Indicators", "Backtest Results"])
 
     with tab_price:
         sma_cols = [f"SMA_{params['sma_short']}", f"SMA_{params['sma_long']}"]
-        fig = candlestick_with_overlays(
-            df,
-            sma_cols=sma_cols,
-            show_bollinger=True,
-            title=f"{params['ticker']} Price",
-        )
+        fig = candlestick_with_overlays(df, sma_cols=sma_cols, show_bollinger=True,
+                                         title=f"{params['ticker']} Price")
         fig = signal_markers_overlay(fig, df)
         st.plotly_chart(fig, use_container_width=True)
 
         c1, c2 = st.columns(2)
         with c1:
-            st.plotly_chart(
-                rsi_chart(df, f"RSI_{params['rsi_period']}", config.RSI_OVERBOUGHT, config.RSI_OVERFSOLD),
-                use_container_width=True,
-            )
+            st.plotly_chart(rsi_chart(df, f"RSI_{params['rsi_period']}",
+                                       config.RSI_OVERBOUGHT, config.RSI_OVERSOLD),
+                             use_container_width=True)
         with c2:
             st.plotly_chart(macd_chart(df), use_container_width=True)
 
@@ -139,8 +140,8 @@ def main():
         st.dataframe(stats_to_dataframe(stats), use_container_width=True)
 
         st.caption(
-            "Note: This is a simplified backtest for educational purposes - it ignores "
-            "slippage beyond the flat fee assumption, taxes and position sizing beyond "
+            "Note: this is a simplified backtest for educational purposes — it ignores "
+            "slippage beyond the flat fee assumption, taxes, and position sizing beyond "
             "100% in/out. Not investment advice."
         )
 
