@@ -52,6 +52,6 @@ def rsi_mean_reversion_signal(
 def macd_crossover_signal(df: pd.DataFrame) -> pd.DataFrame:
     """Long when MACD line is above its signal line."""
     df = df.copy()
-    df["signal"] = (df["MACD_line"] > df["MACD_signal"]).astype(int)
+    df["signal"] = (df["MACD"] > df["MACD_Signal"]).astype(int)
     df["position"] = df["signal"].shift(1).fillna(0)
     return df

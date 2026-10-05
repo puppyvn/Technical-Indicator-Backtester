@@ -10,11 +10,15 @@ import streamlit as st
 import config
 from data.collector import fetch_price_history, fetch_company_info, DataCollectionError
 from data.validator import validate_ohlcv, clean_ohlcv
-from indicators.indicators import add_all_indicators
+from indicators.technical import add_all_indicators
 from backtest.signals import sma_crossover_signal, rsi_mean_reversion_signal, macd_crossover_signal
 from backtest.engine import run_backtest, compute_summary_stats
 from viz.price_charts import candlestick_with_overlays, rsi_chart, macd_chart, signal_markers_overlay
 from viz.performance_charts import equity_curve_chart, drawdown_chart, stats_to_dataframe
+from ml.evaluate import attach_ml_position
+from ml.io import load_saved_signal
+
+ML_STRATEGY = "ML Ensemble (offline)"
 
 st.set_page_config(page_title="Technical Indicator Backtester", layout="wide")
 
@@ -53,7 +57,7 @@ def sidebar_inputs() -> dict:
     st.sidebar.header("Strategy")
     strategy = st.sidebar.radio(
         "Signal to backtest",
-        ["SMA Crossover", "RSI Mean Reversion", "MACD Crossover"],
+        ["SMA Crossover", "RSI Mean Reversion", "MACD Crossover", ML_STRATEGY],
     )
 
     st.sidebar.header("Backtest Settings")
@@ -81,7 +85,7 @@ def apply_strategy(df, params):
 
 
 def main():
-    st.title("Technical Indicator Backtester")
+    st.title("📈 Technical Indicator Backtester")
     st.caption("Data via yfinance • Indicators computed with pandas • Charts with Plotly")
 
     params = sidebar_inputs()
@@ -111,17 +115,32 @@ def main():
 
     # --- Processing: indicators + signals + backtest ---
     df = add_all_indicators(df, params)
-    df = apply_strategy(df, params)
+    if params["strategy"] == ML_STRATEGY:
+        # Models are trained offline (python -m experiments.run_ablation) and only LOADED here.
+        saved = load_saved_signal(params["ticker"], df)
+        if saved is None:
+            st.warning(f"No saved ML predictions for {params['ticker']}. Run: "
+                       f"python -m experiments.run_ablation --tickers {params['ticker']}")
+            return
+        try:
+            df = attach_ml_position(df, saved)
+        except ValueError:
+            st.warning("The saved ML signal does not overlap the selected date range. Try a longer period.")
+            return
+        st.info("ML strategy: showing only the walk-forward out-of-sample window. Buy & Hold is "
+                "measured over the same dates, so the comparison stays fair.")
+    else:
+        df = apply_strategy(df, params)
     df = run_backtest(df, initial_capital=params["capital"], fee_bps=params["fee_bps"])
     stats = compute_summary_stats(df)
 
-    tab_price, tab_backtest = st.tabs(["Price & Indicators", "Backtest Results"])
+    tab_price, tab_backtest = st.tabs(["📊 Price & Indicators", "🧪 Backtest Results"])
 
     with tab_price:
         sma_cols = [f"SMA_{params['sma_short']}", f"SMA_{params['sma_long']}"]
         fig = candlestick_with_overlays(df, sma_cols=sma_cols, show_bollinger=True,
                                          title=f"{params['ticker']} Price")
-        fig = signal_markers_overlay(fig, df)
+        fig = signal_markers_overlay(fig, df, min_change=0.25)
         st.plotly_chart(fig, use_container_width=True)
 
         c1, c2 = st.columns(2)

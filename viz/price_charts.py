@@ -60,22 +60,24 @@ def rsi_chart(df: pd.DataFrame, rsi_col: str, overbought: int = 70, oversold: in
 
 def macd_chart(df: pd.DataFrame) -> go.Figure:
     fig = make_subplots(specs=[[{"secondary_y": False}]])
-    fig.add_trace(go.Bar(x=df["Date"], y=df["MACD_hist"], name="Histogram", marker_color="lightgray"))
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD_line"], mode="lines", name="MACD"))
-    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD_signal"], mode="lines", name="Signal"))
+    fig.add_trace(go.Bar(x=df["Date"], y=df["MACD_Hist"], name="Histogram", marker_color="lightgray"))
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD"], mode="lines", name="MACD"))
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["MACD_Signal"], mode="lines", name="Signal"))
     fig.update_layout(height=220, margin=dict(l=10, r=10, t=20, b=10),
                        legend=dict(orientation="h", yanchor="bottom", y=1.02))
     return fig
 
 
-def signal_markers_overlay(fig: go.Figure, df: pd.DataFrame, price_col: str = "Close") -> go.Figure:
+def signal_markers_overlay(fig: go.Figure, df: pd.DataFrame, price_col: str = "Close",
+                           min_change: float = 0.5) -> go.Figure:
     """
-    Adds buy/sell markers to an existing price figure based on transitions
-    in the `position` column (0->1 = buy, 1->0 = sell).
+    Adds buy/sell markers to an existing price figure based on changes in the
+    `position` column. Binary positions: 0->1 = buy, 1->0 = sell. Fractional (sized)
+    positions: a marker appears when exposure moves by at least `min_change`.
     """
     position_diff = df["position"].diff()
-    buys = df[position_diff == 1]
-    sells = df[position_diff == -1]
+    buys = df[position_diff >= min_change]
+    sells = df[position_diff <= -min_change]
 
     fig.add_trace(go.Scatter(
         x=buys["Date"], y=buys[price_col], mode="markers", name="Buy",
