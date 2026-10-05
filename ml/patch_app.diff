@@ -1,0 +1,55 @@
+--- /tmp/orig/stock_backtester/app.py	2026-09-10 02:16:07.000000000 +0000
++++ app.py	2026-09-28 17:42:05.252739240 +0000
+@@ -15,6 +15,10 @@
+ from backtest.engine import run_backtest, compute_summary_stats
+ from viz.price_charts import candlestick_with_overlays, rsi_chart, macd_chart, signal_markers_overlay
+ from viz.performance_charts import equity_curve_chart, drawdown_chart, stats_to_dataframe
++from ml.evaluate import attach_ml_position
++from ml.io import load_saved_signal
++
++ML_STRATEGY = "ML Ensemble (offline)"
+ 
+ st.set_page_config(page_title="Technical Indicator Backtester", layout="wide")
+ 
+@@ -53,7 +57,7 @@
+     st.sidebar.header("Strategy")
+     strategy = st.sidebar.radio(
+         "Signal to backtest",
+-        ["SMA Crossover", "RSI Mean Reversion", "MACD Crossover"],
++        ["SMA Crossover", "RSI Mean Reversion", "MACD Crossover", ML_STRATEGY],
+     )
+ 
+     st.sidebar.header("Backtest Settings")
+@@ -111,7 +115,22 @@
+ 
+     # --- Processing: indicators + signals + backtest ---
+     df = add_all_indicators(df, params)
+-    df = apply_strategy(df, params)
++    if params["strategy"] == ML_STRATEGY:
++        # Models are trained offline (python -m experiments.run_ablation) and only LOADED here.
++        saved = load_saved_signal(params["ticker"], df)
++        if saved is None:
++            st.warning(f"No saved ML predictions for {params['ticker']}. Run: "
++                       f"python -m experiments.run_ablation --tickers {params['ticker']}")
++            return
++        try:
++            df = attach_ml_position(df, saved)
++        except ValueError:
++            st.warning("The saved ML signal does not overlap the selected date range. Try a longer period.")
++            return
++        st.info("ML strategy: showing only the walk-forward out-of-sample window. Buy & Hold is "
++                "measured over the same dates, so the comparison stays fair.")
++    else:
++        df = apply_strategy(df, params)
+     df = run_backtest(df, initial_capital=params["capital"], fee_bps=params["fee_bps"])
+     stats = compute_summary_stats(df)
+ 
+@@ -121,7 +140,7 @@
+         sma_cols = [f"SMA_{params['sma_short']}", f"SMA_{params['sma_long']}"]
+         fig = candlestick_with_overlays(df, sma_cols=sma_cols, show_bollinger=True,
+                                          title=f"{params['ticker']} Price")
+-        fig = signal_markers_overlay(fig, df)
++        fig = signal_markers_overlay(fig, df, min_change=0.25)
+         st.plotly_chart(fig, use_container_width=True)
+ 
+         c1, c2 = st.columns(2)
